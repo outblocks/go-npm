@@ -6,18 +6,21 @@ const request = require('request'),
     path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
+    unzipper = require('unzipper'),
     mkdirp = require('mkdirp'),
     fs = require('fs'),
+    rimraf = require("rimraf"),
     exec = require('child_process').exec;
 
 // Mapping from Node's `process.arch` to Golang's `$GOARCH`
 const ARCH_MAPPING = {
     "ia32": "386",
     "x64": "amd64",
-    "arm": "arm"
+    "arm": "armv6",
+    "arm64": "arm64"
 };
 
-// Mapping between Node's `process.platform` to Golang's 
+// Mapping between Node's `process.platform` to Golang's
 const PLATFORM_MAPPING = {
     "darwin": "darwin",
     "linux": "linux",
@@ -60,6 +63,8 @@ function verifyAndPlaceBinary(binName, binPath, callback) {
 
         // Move the binary file
         fs.renameSync(path.join(binPath, binName), path.join(installationPath, binName));
+
+        rimraf.sync(binPath);
 
         callback(null);
     });
@@ -127,6 +132,10 @@ function parsePackageJson() {
     // Binary name on Windows has .exe suffix
     if (process.platform === "win32") {
         binName += ".exe"
+
+        if (url.endsWith(".tar.gz")) {
+            url = url.replace(".tar.gz", ".zip")
+        }
     }
 
     // Interpolate variables in URL, if necessary
@@ -158,23 +167,39 @@ function install(callback) {
     if (!opts) return callback(INVALID_INPUT);
 
     mkdirp.sync(opts.binPath);
-    let ungz = zlib.createGunzip();
-    let untar = tar.Extract({path: opts.binPath});
-
-    ungz.on('error', callback);
-    untar.on('error', callback);
-
-    // First we will Un-GZip, then we will untar. So once untar is completed,
-    // binary is downloaded into `binPath`. Verify the binary and call it good
-    untar.on('end', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback));
 
     console.log("Downloading from URL: " + opts.url);
+
     let req = request({uri: opts.url});
-    req.on('error', callback.bind(null, "Error downloading from URL: " + opts.url));
+
+    if (opts.url.endsWith('.tar.gz')) {
+        let ungz = zlib.createGunzip();
+        let untar = tar.extract({cwd: opts.binPath});
+
+        ungz.on('error', callback);
+        untar.on('error', callback);
+
+        // First we will Un-GZip, then we will untar. So once untar is completed,
+        // binary is downloaded into `binPath`. Verify the binary and call it good
+        untar.on('end', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback));
+
+        req.on('error', callback.bind(null, "Error downloading from URL: " + opts.url));
+        req.on('response', function(res) {
+            if (res.statusCode !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.statusCode);
+
+            req.pipe(ungz).pipe(untar);
+        });
+
+        return;
+    }
+
+    let unz = unzipper.Extract({ path: opts.binPath });
+    unz.on('close', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback))
+
     req.on('response', function(res) {
         if (res.statusCode !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.statusCode);
 
-        req.pipe(ungz).pipe(untar);
+        req.pipe(unz);
     });
 }
 
