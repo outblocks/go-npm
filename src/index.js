@@ -2,7 +2,7 @@
 
 "use strict"
 
-const request = require('request'),
+const fetch = require('node-fetch'),
     path = require('path'),
     tar = require('tar'),
     zlib = require('zlib'),
@@ -171,8 +171,6 @@ function install(callback) {
 
     console.log("Downloading from URL: " + opts.url);
 
-    let req = request({uri: opts.url});
-
     if (opts.url.endsWith('.tar.gz')) {
         let ungz = zlib.createGunzip();
         let untar = tar.extract({cwd: opts.binPath});
@@ -184,11 +182,12 @@ function install(callback) {
         // binary is downloaded into `binPath`. Verify the binary and call it good
         untar.on('end', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback));
 
-        req.on('error', callback.bind(null, "Error downloading from URL: " + opts.url));
-        req.on('response', function(res) {
-            if (res.statusCode !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.statusCode);
+        fetch(opts.url).then(res => {
+            if (res.status !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.status);
 
-            req.pipe(ungz).pipe(untar);
+            res.body.pipe(ungz).pipe(untar);
+        }).catch(err => {
+            callback("Error downloading from URL: " + opts.url);
         });
 
         return;
@@ -197,10 +196,12 @@ function install(callback) {
     let unz = unzipper.Extract({ path: opts.binPath });
     unz.on('close', verifyAndPlaceBinary.bind(null, opts.binName, opts.binPath, callback))
 
-    req.on('response', function(res) {
-        if (res.statusCode !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.statusCode);
+    fetch(opts.url).then(res => {
+        if (res.status !== 200) return callback("Error downloading binary. HTTP Status Code: " + res.status);
 
-        req.pipe(unz);
+        res.body.pipe(unz);
+    }).catch(err => {
+        callback("Error downloading from URL: " + opts.url);
     });
 }
 
