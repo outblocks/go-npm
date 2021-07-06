@@ -34,7 +34,7 @@ function getInstallationPath(callback) {
     exec("npm bin", function(err, stdout, stderr) {
 
         let dir =  null;
-        if (err || stderr || !stdout || stdout.length === 0)  {
+        if (err || !stdout || stdout.length === 0) {
 
             // We couldn't infer path from `npm bin`. Let's try to get it from
             // Environment variables set by NPM when it runs.
@@ -48,6 +48,7 @@ function getInstallationPath(callback) {
             dir = stdout.trim();
         }
 
+        dir = dir.replace(/node_modules.*\/\.bin/, 'node_modules/.bin');
         mkdirp.sync(dir);
 
         callback(null, dir);
