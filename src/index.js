@@ -9,7 +9,7 @@ const request = require('request'),
     unzipper = require('unzipper'),
     mkdirp = require('mkdirp'),
     fs = require('fs'),
-    rimraf = require("rimraf"),
+    rimraf = require('rimraf'),
     exec = require('child_process').exec;
 
 // Mapping from Node's `process.arch` to Golang's `$GOARCH`
